@@ -152,6 +152,7 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         verbose=0,
         random_state=None,
         use_fpga=False,
+        use_emul=False,
         digital_ising_size=128,
         ising_samples = 10
     ):
@@ -164,11 +165,16 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         self.use_fpga = use_fpga
         self.digital_ising_size = digital_ising_size
         self.ising_samples = ising_samples
+        self.use_emul = use_emul
 
         if use_fpga:
             J = np.zeros((digital_ising_size-1,digital_ising_size-1))
             h = np.zeros((digital_ising_size-1))
             self.ising = Ising(J, h, use_fpga = True, digital_ising_size=digital_ising_size, verbose = False)
+        elif use_emul:
+            J = np.zeros((digital_ising_size-1,digital_ising_size-1))
+            h = np.zeros((digital_ising_size-1))
+            self.ising = Ising(J, h, use_fpga = False, verbose = False)
         else:
             self.ising = None
 
@@ -348,14 +354,14 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         # TODO: Use a FIFO rather than discontinuous sampling
         self.ising.minimize(
             num_samples,
-            10000,
+            100,
             False,
             False,
             False,
             use_window=False,
             sampling_period=50,
             convergence_threshold=50,
-            use_fpga = True,
+            use_fpga = self.use_fpga,
             cycles = 100000,
             shuffle_spins = False,
             reprogram_J = True,
@@ -386,7 +392,7 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
             Random number generator to use for sampling.
         """
         h_pos = self._mean_hiddens(v_pos)
-        if self.use_fpga:
+        if self.use_fpga or self.use_emul:
             v_neg, h_neg = self._sample_ising(self.ising_samples)
         else:
             v_neg = self._sample_visibles(self.h_samples_, rng)
@@ -485,7 +491,6 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         for iteration in range(1, self.n_iter + 1):
             for batch_slice in batch_slices:
                 self._fit(X[batch_slice], rng)
-                print("slice done!")
 
             if verbose:
                 end = time.time()
