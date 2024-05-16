@@ -24,6 +24,8 @@ from ..utils._param_validation import Interval
 from ..utils.extmath import safe_sparse_dot
 from ..utils.validation import check_is_fitted
 
+from simulated_bifurcation.core import Ising
+import torch
 
 class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
     """Bernoulli Restricted Boltzmann Machine (RBM).
@@ -149,6 +151,9 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         n_iter=10,
         verbose=0,
         random_state=None,
+        use_fpga=False,
+        digital_ising_size=128,
+        ising_samples = 10
     ):
         self.n_components = n_components
         self.learning_rate = learning_rate
@@ -156,6 +161,16 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         self.n_iter = n_iter
         self.verbose = verbose
         self.random_state = random_state
+        self.use_fpga = use_fpga
+        self.digital_ising_size = digital_ising_size
+        self.ising_samples = ising_samples
+
+        if use_fpga:
+            J = np.zeros((digital_ising_size-1,digital_ising_size-1))
+            h = np.zeros((digital_ising_size-1))
+            self.ising = Ising(J, h, use_fpga = True, digital_ising_size=digital_ising_size, verbose = False)
+        else:
+            self.ising = None
 
     def transform(self, X):
         """Compute the hidden layer activation probabilities, P(h=1|v=X).
@@ -314,6 +329,48 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
 
         self._fit(X, self.random_state_)
 
+    def _sample_ising(self, num_samples):
+        # Transform compoments matrix into J & h matrix
+        J = np.zeros((self.digital_ising_size-1, self.digital_ising_size-1))
+        h = np.zeros((self.digital_ising_size-1))
+
+        for i in range(self.n_components):
+            for j in range(self.n_features_in_):
+                if i != 63:
+                    J[j][i+64] = self.components_[i][j]
+                else:
+                    h[j] = self.components_[i][j]
+
+        self.ising.J = torch.from_numpy(J)
+        self.ising.h = torch.from_numpy(h)
+
+        # Sample num_samples
+        # TODO: Use a FIFO rather than discontinuous sampling
+        self.ising.minimize(
+            num_samples,
+            10000,
+            False,
+            False,
+            False,
+            use_window=False,
+            sampling_period=50,
+            convergence_threshold=50,
+            use_fpga = True,
+            cycles = 100000,
+            shuffle_spins = False,
+            reprogram_J = True,
+            counter_cutoff = 0,
+            counter_max = 1
+        )
+
+        # Split samples into v and h
+        samples = self.ising.computed_spins.numpy().tolist()
+        samples.append([1 for i in range(num_samples)]) #128th spin is always 1
+        samples = np.array(samples)
+        samples = np.transpose(samples)
+        split = np.split(samples, 2, axis=1)
+        return split[0], split[1]
+
     def _fit(self, v_pos, rng):
         """Inner fit for one mini-batch.
 
@@ -329,8 +386,11 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
             Random number generator to use for sampling.
         """
         h_pos = self._mean_hiddens(v_pos)
-        v_neg = self._sample_visibles(self.h_samples_, rng)
-        h_neg = self._mean_hiddens(v_neg)
+        if self.use_fpga:
+            v_neg, h_neg = self._sample_ising(self.ising_samples)
+        else:
+            v_neg = self._sample_visibles(self.h_samples_, rng)
+            h_neg = self._mean_hiddens(v_neg)
 
         lr = float(self.learning_rate) / v_pos.shape[0]
         update = safe_sparse_dot(v_pos.T, h_pos, dense_output=True).T
@@ -425,6 +485,7 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         for iteration in range(1, self.n_iter + 1):
             for batch_slice in batch_slices:
                 self._fit(X[batch_slice], rng)
+                print("slice done!")
 
             if verbose:
                 end = time.time()

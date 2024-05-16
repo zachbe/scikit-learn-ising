@@ -71,7 +71,7 @@ from sklearn.neural_network import BernoulliRBM
 from sklearn.pipeline import Pipeline
 
 logistic = linear_model.LogisticRegression(solver="newton-cg", tol=1)
-rbm = BernoulliRBM(random_state=0, verbose=True)
+rbm = BernoulliRBM(random_state=0, verbose=True, batch_size=1000, use_fpga = True, ising_samples = 10)
 
 rbm_features_classifier = Pipeline(steps=[("rbm", rbm), ("logistic", logistic)])
 
@@ -142,4 +142,4 @@ for i, comp in enumerate(rbm.components_):
 plt.suptitle("64 components extracted by RBM", fontsize=16)
 plt.subplots_adjust(0.08, 0.02, 0.92, 0.85, 0.08, 0.23)
 
-plt.show()
+#plt.show()
