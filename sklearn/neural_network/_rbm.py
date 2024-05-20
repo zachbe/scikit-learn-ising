@@ -374,6 +374,7 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
         samples.append([1 for i in range(num_samples)]) #128th spin is always 1
         samples = np.array(samples)
         samples = np.transpose(samples)
+        samples[samples < 0] = 0
         split = np.split(samples, 2, axis=1)
         return split[0], split[1]
 
@@ -398,13 +399,44 @@ class BernoulliRBM(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstima
             v_neg = self._sample_visibles(self.h_samples_, rng)
             h_neg = self._mean_hiddens(v_neg)
 
+         
+        #v_neg, h_neg = self._sample_ising(self.ising_samples)
+        #v_neg_g = self._sample_visibles(self.h_samples_, rng)
+        #h_neg_g = self._mean_hiddens(v_neg_g)
+
+        ##print(np.shape(v_neg))
+        ##print(v_neg)
+        ##print(np.shape(h_neg))
+        ##print(h_neg)
+        ##print(np.shape(v_neg_g))
+        ##print(v_neg_g)
+        ##print(np.shape(h_neg_g))
+        ##print(h_neg_g)
+
+        #np.set_printoptions(threshold=np.inf)
+        #update = safe_sparse_dot(v_pos.T, h_pos, dense_output=True).T
+        #update -= np.dot(h_neg.T, v_neg)
+        #
+        #update_g = safe_sparse_dot(v_pos.T, h_pos, dense_output=True).T
+        #update_g -= np.dot(h_neg_g.T, v_neg_g)
+
+        #for i in range(np.shape(update)[0]):
+        #    for j in range(np.shape(update)[1]):
+        #        print(update[i][j])
+        #        print(update_g[i][j])
+        #        print("------------")
+
+        #time.sleep(5)
+
+        div = len(h_neg)/self.batch_size
+
         lr = float(self.learning_rate) / v_pos.shape[0]
         update = safe_sparse_dot(v_pos.T, h_pos, dense_output=True).T
-        update -= np.dot(h_neg.T, v_neg)
+        update -= np.dot(h_neg.T, v_neg) / div
         self.components_ += lr * update
-        self.intercept_hidden_ += lr * (h_pos.sum(axis=0) - h_neg.sum(axis=0))
+        self.intercept_hidden_ += lr * (h_pos.sum(axis=0) - (h_neg.sum(axis=0)/div))
         self.intercept_visible_ += lr * (
-            np.asarray(v_pos.sum(axis=0)).squeeze() - v_neg.sum(axis=0)
+            np.asarray(v_pos.sum(axis=0)).squeeze() - (v_neg.sum(axis=0)/div)
         )
 
         h_neg[rng.uniform(size=h_neg.shape) < h_neg] = 1.0  # sample binomial

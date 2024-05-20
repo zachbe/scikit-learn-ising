@@ -71,7 +71,7 @@ from sklearn.neural_network import BernoulliRBM
 from sklearn.pipeline import Pipeline
 
 logistic = linear_model.LogisticRegression(solver="newton-cg", tol=1)
-rbm = BernoulliRBM(random_state=0, verbose=True, batch_size=10, use_fpga = False, use_emul = True, ising_samples = 10)
+rbm = BernoulliRBM(random_state=0, verbose=True, batch_size=10, use_fpga = False, use_emul = True, ising_samples = 15)
 
 rbm_features_classifier = Pipeline(steps=[("rbm", rbm), ("logistic", logistic)])
 
@@ -88,7 +88,7 @@ from sklearn.base import clone
 # Hyper-parameters. These were set by cross-validation,
 # using a GridSearchCV. Here we are not performing cross-validation to
 # save time.
-rbm.learning_rate = 0.06
+rbm.learning_rate = 0.006
 rbm.n_iter = 10
 
 # More components tend to give better prediction performance, but larger
